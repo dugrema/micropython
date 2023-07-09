@@ -24,7 +24,11 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
 #include "py/runtime.h"
+
+#if MICROPY_PY_MACHINE_SPI
+
 #include "py/mphal.h"
 #include "extmod/machine_spi.h"
 #include "modmachine.h"
@@ -57,7 +61,6 @@ typedef struct _machine_spi_obj_t {
 } machine_spi_obj_t;
 
 extern Sercom *sercom_instance[];
-MP_REGISTER_ROOT_POINTER(void *sercom_table[SERCOM_INST_NUM]);
 
 void common_spi_irq_handler(int spi_id) {
     // handle Sercom IRQ RXC
@@ -208,7 +211,13 @@ STATIC void machine_spi_init(mp_obj_base_t *self_in, size_t n_args, const mp_obj
 
         // SPI is driven by the clock of GCLK Generator 2, freq by get_peripheral_freq()
         // baud = bus_freq / (2 * baudrate) - 1
-        uint32_t baud = get_peripheral_freq() / (2 * self->baudrate) - 1;
+        uint32_t baud = get_peripheral_freq() / (2 * self->baudrate);
+        if (baud > 0) {  // Avoid underflow
+            baud -= 1;
+        }
+        if (baud > 255) { // Avoid overflow
+            baud = 255;
+        }
         spi->SPI.BAUD.reg = baud; // Set Baud
 
         // Enable RXC interrupt only if miso is defined
@@ -264,16 +273,6 @@ STATIC void machine_sercom_deinit(mp_obj_base_t *self_in) {
     MP_STATE_PORT(sercom_table[self->id]) = NULL;
 }
 
-void sercom_deinit_all(void) {
-    for (int i = 0; i < SERCOM_INST_NUM; i++) {
-        Sercom *spi = sercom_instance[i];
-        spi->SPI.INTENCLR.reg = 0xff;
-        sercom_register_irq(i, NULL);
-        sercom_enable(spi, 0);
-        MP_STATE_PORT(sercom_table[i]) = NULL;
-    }
-}
-
 STATIC void machine_spi_transfer(mp_obj_base_t *self_in, size_t len, const uint8_t *src, uint8_t *dest) {
     machine_spi_obj_t *self = (machine_spi_obj_t *)self_in;
 
@@ -290,7 +289,7 @@ STATIC void machine_spi_transfer(mp_obj_base_t *self_in, size_t len, const uint8
         if (self->miso == 0xff) {
             mp_raise_ValueError(MP_ERROR_TEXT("read is not enabled"));
         }
-        spi->SPI.INTENSET.bit.RXC = 1;
+        spi->SPI.INTENSET.reg = SERCOM_SPI_INTENSET_RXC;
         self->dest = dest;
         self->rxlen = len;
     }
@@ -311,7 +310,7 @@ STATIC void machine_spi_transfer(mp_obj_base_t *self_in, size_t len, const uint8
             timeout--;
             MICROPY_EVENT_POLL_HOOK
         }
-        spi->SPI.INTENCLR.bit.RXC = 1;
+        spi->SPI.INTENCLR.reg = SERCOM_SPI_INTENCLR_RXC;
     } else {
         // Wait for the data being shifted out.
         while (!spi->SPI.INTFLAG.bit.TXC) {
@@ -335,3 +334,5 @@ MP_DEFINE_CONST_OBJ_TYPE(
     protocol, &machine_spi_p,
     locals_dict, &mp_machine_spi_locals_dict
     );
+
+#endif

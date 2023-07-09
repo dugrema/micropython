@@ -73,8 +73,9 @@ STATIC int compile_and_save(const char *file, const char *output_file, const cha
         #endif
 
         mp_parse_tree_t parse_tree = mp_parse(lex, MP_PARSE_FILE_INPUT);
-        mp_module_context_t *ctx = m_new_obj(mp_module_context_t);
-        mp_compiled_module_t cm = mp_compile_to_raw_code(&parse_tree, source_name, false, ctx);
+        mp_compiled_module_t cm;
+        cm.context = m_new_obj(mp_module_context_t);
+        mp_compile_to_raw_code(&parse_tree, source_name, false, &cm);
 
         vstr_t vstr;
         vstr_init(&vstr, 16);
@@ -181,6 +182,15 @@ STATIC void pre_process_options(int argc, char **argv) {
     }
 }
 
+STATIC char *backslash_to_forwardslash(char *path) {
+    for (char *p = path; p != NULL && *p != '\0'; ++p) {
+        if (*p == '\\') {
+            *p = '/';
+        }
+    }
+    return path;
+}
+
 MP_NOINLINE int main_(int argc, char **argv) {
     mp_stack_set_limit(40000 * (sizeof(void *) / 4));
 
@@ -241,7 +251,7 @@ MP_NOINLINE int main_(int argc, char **argv) {
                     exit(usage(argv));
                 }
                 a += 1;
-                source_file = argv[a];
+                source_file = backslash_to_forwardslash(argv[a]);
             } else if (strncmp(argv[a], "-msmall-int-bits=", sizeof("-msmall-int-bits=") - 1) == 0) {
                 char *end;
                 mp_dynamic_compiler.small_int_bits =
@@ -307,7 +317,7 @@ MP_NOINLINE int main_(int argc, char **argv) {
                 mp_printf(&mp_stderr_print, "multiple input files\n");
                 exit(1);
             }
-            input_file = argv[a];
+            input_file = backslash_to_forwardslash(argv[a]);
         }
     }
 
@@ -334,7 +344,7 @@ int main(int argc, char **argv) {
     return main_(argc, argv);
 }
 
-uint mp_import_stat(const char *path) {
+mp_import_stat_t mp_import_stat(const char *path) {
     (void)path;
     return MP_IMPORT_STAT_NO_EXIST;
 }
