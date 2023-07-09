@@ -48,6 +48,9 @@
 #include "pico/bootrom.h"
 #include "pico/stdlib.h"
 #include "pico/unique_id.h"
+#if MICROPY_PY_NETWORK_CYW43
+#include "lib/cyw43-driver/src/cyw43.h"
+#endif
 
 #if MICROPY_PY_MACHINE
 
@@ -141,6 +144,13 @@ STATIC mp_obj_t machine_lightsleep(size_t n_args, const mp_obj_t *args) {
 
     const uint32_t xosc_hz = XOSC_MHZ * 1000000;
 
+    uint32_t my_interrupts = save_and_disable_interrupts();
+    #if MICROPY_PY_NETWORK_CYW43
+    if (cyw43_has_pending) {
+        restore_interrupts(my_interrupts);
+        return mp_const_none;
+    }
+    #endif
     // Disable USB and ADC clocks.
     clock_stop(clk_usb);
     clock_stop(clk_adc);
@@ -165,6 +175,9 @@ STATIC mp_obj_t machine_lightsleep(size_t n_args, const mp_obj_t *args) {
     rosc_hw->ctrl = ROSC_CTRL_ENABLE_VALUE_DISABLE << ROSC_CTRL_ENABLE_LSB;
 
     if (n_args == 0) {
+        #if MICROPY_PY_NETWORK_CYW43
+        gpio_set_dormant_irq_enabled(CYW43_PIN_WL_HOST_WAKE, GPIO_IRQ_LEVEL_HIGH, true);
+        #endif
         xosc_dormant();
     } else {
         uint32_t sleep_en0 = clocks_hw->sleep_en0;
@@ -190,6 +203,7 @@ STATIC mp_obj_t machine_lightsleep(size_t n_args, const mp_obj_t *args) {
 
     // Bring back all clocks.
     clocks_init();
+    restore_interrupts(my_interrupts);
 
     return mp_const_none;
 }
@@ -215,7 +229,7 @@ STATIC mp_obj_t machine_enable_irq(mp_obj_t state_in) {
 MP_DEFINE_CONST_FUN_OBJ_1(machine_enable_irq_obj, machine_enable_irq);
 
 STATIC const mp_rom_map_elem_t machine_module_globals_table[] = {
-    { MP_ROM_QSTR(MP_QSTR___name__),            MP_ROM_QSTR(MP_QSTR_umachine) },
+    { MP_ROM_QSTR(MP_QSTR___name__),            MP_ROM_QSTR(MP_QSTR_machine) },
     { MP_ROM_QSTR(MP_QSTR_unique_id),           MP_ROM_PTR(&machine_unique_id_obj) },
     { MP_ROM_QSTR(MP_QSTR_soft_reset),          MP_ROM_PTR(&machine_soft_reset_obj) },
     { MP_ROM_QSTR(MP_QSTR_reset),               MP_ROM_PTR(&machine_reset_obj) },
@@ -264,6 +278,6 @@ const mp_obj_module_t mp_module_machine = {
     .globals = (mp_obj_dict_t *)&machine_module_globals,
 };
 
-MP_REGISTER_MODULE(MP_QSTR_umachine, mp_module_machine);
+MP_REGISTER_EXTENSIBLE_MODULE(MP_QSTR_machine, mp_module_machine);
 
 #endif // MICROPY_PY_MACHINE

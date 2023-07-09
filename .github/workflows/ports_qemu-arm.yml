@@ -8,10 +8,15 @@ on:
       - 'tools/**'
       - 'py/**'
       - 'extmod/**'
+      - 'shared/**'
       - 'lib/**'
       - 'drivers/**'
       - 'ports/qemu-arm/**'
       - 'tests/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build_and_test:

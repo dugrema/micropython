@@ -313,12 +313,12 @@ typedef union _mp_rom_obj_t {
 
 // Cast mp_obj_t to object pointer
 #ifndef MP_OBJ_TO_PTR
-#define MP_OBJ_TO_PTR(o) ((void *)o)
+#define MP_OBJ_TO_PTR(o) ((void *)(o))
 #endif
 
 // Cast object pointer to mp_obj_t
 #ifndef MP_OBJ_FROM_PTR
-#define MP_OBJ_FROM_PTR(p) ((mp_obj_t)p)
+#define MP_OBJ_FROM_PTR(p) ((mp_obj_t)(p))
 #endif
 
 // Macros to create objects that are stored in ROM.
@@ -418,7 +418,7 @@ typedef struct _mp_rom_obj_t { mp_const_obj_t o; } mp_rom_obj_t;
 
 #define MP_DEFINE_CONST_DICT(dict_name, table_name) MP_DEFINE_CONST_DICT_WITH_SIZE(dict_name, table_name, MP_ARRAY_SIZE(table_name))
 
-// These macros are used to declare and define constant staticmethond and classmethod objects
+// These macros are used to declare and define constant staticmethod and classmethod objects
 // You can put "static" in front of the definitions to make them local
 
 #define MP_DECLARE_CONST_STATICMETHOD_OBJ(obj_name) extern const mp_rom_obj_static_class_method_t obj_name
@@ -433,6 +433,13 @@ typedef struct _mp_rom_obj_t { mp_const_obj_t o; } mp_rom_obj_t;
 // param module_name: MP_QSTR_<module name>
 // param obj_module: mp_obj_module_t instance
 #define MP_REGISTER_MODULE(module_name, obj_module)
+
+// As above, but allow this module to be extended from the filesystem.
+#define MP_REGISTER_EXTENSIBLE_MODULE(module_name, obj_module)
+
+// Add a custom handler for a builtin module that will be called to delegate
+// failed attribute lookups.
+#define MP_REGISTER_MODULE_DELEGATION(obj_module, fun_name)
 
 // Declare a root pointer (to avoid garbage collection of a global static variable).
 // param variable_declaration: a valid C variable declaration
@@ -773,15 +780,14 @@ typedef struct _mp_obj_full_type_t {
 // of the 29th argument (29 is 13*2 + 3).
 #define MP_DEFINE_CONST_OBJ_TYPE_NARGS(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22, _23, _24, _25, _26, _27, _28, N, ...) MP_DEFINE_CONST_OBJ_TYPE_NARGS_##N
 
-// These macros are used to define a object type in ROM.
+// This macros is used to define a object type in ROM.
 // Invoke as MP_DEFINE_CONST_OBJ_TYPE(_typename, _name, _flags, _make_new [, slot, func]*)
-// They use the number of arguments to select which MP_DEFINE_CONST_OBJ_TYPE_*
+// It uses the number of arguments to select which MP_DEFINE_CONST_OBJ_TYPE_*
 // macro to use based on the number of arguments. It works by shifting the
 // numeric values 12, 11, ... 0 by the number of arguments, such that the
 // 29th argument ends up being the number to use. The _INV values are
 // placeholders because the slot arguments come in pairs.
 #define MP_DEFINE_CONST_OBJ_TYPE(...) MP_DEFINE_CONST_OBJ_TYPE_EXPAND(MP_DEFINE_CONST_OBJ_TYPE_NARGS(__VA_ARGS__, _INV, 12, _INV, 11, _INV, 10, _INV, 9, _INV, 8, _INV, 7, _INV, 6, _INV, 5, _INV, 4, _INV, 3, _INV, 2, _INV, 1, _INV, 0)(mp_obj_type_t, __VA_ARGS__))
-#define MP_DEFINE_CONST_OBJ_FULL_TYPE(...) MP_DEFINE_CONST_OBJ_TYPE_EXPAND(MP_DEFINE_CONST_OBJ_TYPE_NARGS(__VA_ARGS__, _INV, 12, _INV, 11, _INV, 10, _INV, 9, _INV, 8, _INV, 7, _INV, 6, _INV, 5, _INV, 4, _INV, 3, _INV, 2, _INV, 1, _INV, 0)(mp_obj_full_type_t, __VA_ARGS__))
 
 // Constant types, globally accessible
 extern const mp_obj_type_t mp_type_type;
@@ -1017,7 +1023,6 @@ mp_obj_t mp_obj_id(mp_obj_t o_in);
 mp_obj_t mp_obj_len(mp_obj_t o_in);
 mp_obj_t mp_obj_len_maybe(mp_obj_t o_in); // may return MP_OBJ_NULL
 mp_obj_t mp_obj_subscr(mp_obj_t base, mp_obj_t index, mp_obj_t val);
-mp_obj_t mp_generic_unary_op(mp_unary_op_t op, mp_obj_t o_in);
 
 // cell
 
@@ -1203,8 +1208,6 @@ typedef struct _mp_obj_module_t {
 static inline mp_obj_dict_t *mp_obj_module_get_globals(mp_obj_t module) {
     return ((mp_obj_module_t *)MP_OBJ_TO_PTR(module))->globals;
 }
-// check if given module object is a package
-bool mp_obj_is_package(mp_obj_t module);
 
 // staticmethod and classmethod types; defined here so we can make const versions
 // this structure is used for instances of both staticmethod and classmethod
